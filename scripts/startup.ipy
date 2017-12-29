@@ -1,0 +1,27 @@
+import pandas as pd
+from numpy import sqrt,mean,log,diff
+import quandl
+import scipy.stats as stats
+from scipy import interpolate 
+from scipy.interpolate import Rbf
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import cm
+from matplotlib import animation
+from pandas_datareader.data import Options
+import pandas_datareader.data as web
+import datetime
+from core.lib.Options import OptionLib
+
+
+%pylab inline
+
+# import jtplot submodule from jupyterthemes
+from jupyterthemes import jtplot
+
+# currently installed theme will be used to
+# set plot style if no arguments provided
+jtplot.style(theme='monokai')
+
+olib = OptionLib()
+olib.data_auto_refresh()
