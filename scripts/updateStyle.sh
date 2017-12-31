@@ -1,3 +1,3 @@
 #!/bin/bash
 
-cp custom.css ~/.jupyter/custom/
+cp ./content/custom.css ~/.jupyter/custom/

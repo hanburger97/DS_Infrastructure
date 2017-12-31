@@ -1,2 +1,3 @@
+#!/usr/bin/env bash
 
-cp startup.ipy ~/.ipython/profile_default/startup/
+cp ./content/startup.ipy ~/.ipython/profile_default/startup/
