@@ -1,0 +1,41 @@
+FROM continuumio/anaconda3
+
+RUN mkdir /opt/researchs
+RUN mkdir /opt/data
+RUN mkdir /opt/lab
+
+VOLUME ["/opt/researchs","/opt/data"]
+
+RUN /opt/conda/bin/conda install jupyter -y --quiet
+
+COPY requirements.txt /opt/labrequirements.txt
+COPY core/ /opt/researchs/core/
+
+
+RUN pip install -r /opt/lab/requirements.txt
+
+
+EXPOSE 8888
+
+CMD /opt/conda/bin/jupyter notebook --notebook-dir=/opt/researchs --ip=0.0.0.0 --port=8888 --no-browser --allow-root
+
+
+/=============================
+
+FROM python:3.5.3-onbuild
+
+RUN mkdir /data
+RUN mkdir /researchs
+RUN mkdir /root/.jupyter/custom
+
+COPY /scripts/content/custom.css /root/.jupyter/custom
+
+COPY ./core/ /researchs/core
+
+VOLUME ["/data","/researchs"]
+
+RUN apt-get install curl
+
+EXPOSE 8888
+
+CMD jupyter notebook --no-browser --ip=0.0.0.0 --allow-root
