@@ -221,6 +221,9 @@ class OptionLib:
                 # Free em memory
                 del bso
 
+            # Round it into integers
+            toes = np.around(toes, decimals=0)
+
             # Check length before zipping in the Dataframe
             if not (len(delta) == len(gamma) ==
                     len(theta) == len(rho) ==
@@ -336,8 +339,9 @@ class OptionLib:
         """
         exp = self.opt.expiry_dates[expiry_index]
         curr = self.__last_quote
-        toe = (datetime.datetime.combine(exp, datetime.time.min) - curr).days
 
+        #toe = (datetime.datetime.combine(exp, datetime.time.min) - curr).days
+        toe = exp.day - curr.day
         calls, puts = [], []
 
         lc = len(self.IVs['c'])
@@ -345,18 +349,19 @@ class OptionLib:
         # calls = [ [ Strike, IV] , ... ]
         for i in range(lc):
             row = self.IVs['c'][i]
-            if row[0] == toe:
+            if int(row[0]) == toe:
                 calls.append([
                     row[1],
                     row[2]
                 ])
         for i in range(lp):
             row = self.IVs['p'][i]
-            if row[0] == toe:
+            if int(row[0]) == toe:
                 puts.append([
                     row[1],
                     row[2]
                 ])
+        return calls, puts
 
 
     #########################################################################################################
@@ -383,8 +388,8 @@ class OptionLib:
             IV_puts.append(el[1])
 
         plt.figure(figsize=(16, 7))
-        e = plt.scatter(k_calls, IV_calls, c='red', label="IV(call options)")
-        f = plt.scatter(k_puts, IV_puts, c='white', label="IV(put options)")
+        e = plt.scatter(k_calls, IV_calls, c='white', label="IV(call options)")
+        f = plt.scatter(k_puts, IV_puts, c='red', label="IV(put options)")
         plt.xlabel('strike')
         plt.ylabel('Implied Volatility')
         plt.legend((e, f), ("IV (call options)", "IV (put options)"))
@@ -428,3 +433,5 @@ if __name__ == '__main__':
 
 
     olib = OptionLib()
+    olib.data_IVpT(0)
+
