@@ -89,8 +89,6 @@ class OptionLib:
             'p':[]
         }
 
-
-
         self.lastIVP = None
         self.lastIVC = None
 
@@ -128,6 +126,8 @@ class OptionLib:
             self.__data = self.data_building(r=self.risk_free_rate, q=self.dividend_rate)
 
             self.IVs = {'c': [],'p': []}
+            self.data_aggregate_IV()
+
             self.__last_quote = self.opt.get_call_data().iloc[0]['Quote_Time'].to_pydatetime()
 
             #Legacy
@@ -140,7 +140,6 @@ class OptionLib:
         # This should be running in another thread
         while True:
             self.data_refresh()
-
 
     def explore_expiry(self, opt=None):
         #Legacy...
@@ -299,102 +298,13 @@ class OptionLib:
             dividendrate=dividendrate
         )
 
-    """
-    # LEGACY METHOD - TO BE DELETED AFTER ENSURING BACKWARD COMPATIBILITY
-    def IV(self,
-           option_type,
-           option_price,
-           underlying_price,
-           strike,
-           time,
-           riskfreerate=None,
-           dividendrate=None
-           ):
 
-
-        otype, oprice, s, k, t, r, q = option_type, option_price, underlying_price, strike, time, riskfreerate, dividendrate
-        q = q if q else self.dividend_rate
-        r = r if r else self.risk_free_rate
-
-        epsilon = 0.00001
-        upper_sigma = 500.0
-        max_sigma = 500.0
-        min_sigma = 0.0001
-        lower_sigma = 0.0001
-        iteration = 0
-
-
-        # Using a Bisection Algorithm to find the Implied Sigma
-        while True:
-            iteration += 1
-            mid_sigma = (upper_sigma + lower_sigma) / 2.0
-            price = self.BSM(otype, mid_sigma, s, k, r, t, q)
-
-            if otype == 'c':
-
-                lower_price = self.BSM(otype, lower_sigma, s, k, r, t, q)
-                if (lower_price - oprice) * (price - oprice) > 0:
-                    lower_sigma = mid_sigma
-                else:
-                    upper_sigma = mid_sigma
-                if abs(price - oprice) < epsilon: break
-                if mid_sigma > max_sigma - 5:
-                    mid_sigma = 0.000001
-                    break
-                    #             print("mid_vol=%f" %mid_vol)
-                    #             print("upper_price=%f" %lower_price)
-
-            elif otype == 'p':
-                upper_price = self.BSM(otype, upper_sigma, s, k, r, t, q)
-
-                if (upper_price - oprice) * (price - oprice) > 0:
-                    upper_sigma = mid_sigma
-                else:
-                    lower_sigma = mid_sigma
-                    #             print("mid_vol=%f" %mid_vol)
-                    #             print("upper_price=%f" %upper_price)
-                if abs(price - oprice) < epsilon: break
-                if iteration > 100: break
-
-        return mid_sigma
-
-    """
 
     #########################################################################################################
     #                                       Helpers and Tools                                               #
     #########################################################################################################
 
-    """
-        # LEGACY METHOD - TO BE DELETED AFTER ENSURING BACKWARD COMPATIBILITY
 
-    def IV_TT(self,
-            option_type,
-            expiry_index,
-            opt=None
-            ):
-
-        opt = opt if opt else self.opt
-
-        expiry = opt.expiry_dates[expiry_index]
-        if option_type == 'c':
-            data = opt.get_call_data(expiry=expiry)
-        elif option_type == 'p':
-            data = opt.get_put_data(expiry=expiry)
-
-        s = opt.underlying_price  # data_call['Underlying_Price']  undelying price
-        expiry = data.index.get_level_values('Expiry')[0]  # get the expiry
-        current_date = opt.quote_time  # current_date = datetime.datetime.now() # get the current date
-        time_to_expire = float((expiry - current_date).days) / 365  # compute time to expiration
-        premium = (data['Ask'] + data['Bid']) / 2  # option premium
-        strike = list(data.index.get_level_values('Strike'))  # get the strike price
-        IV = []
-
-        for i in range(len(data)):
-            IV.append(self.IV(option_type, premium.values[i], s, strike[i], time_to_expire))
-
-        return data, strike, IV
-
-    """
 
     def data_aggregate_IV(self):
         """
@@ -422,68 +332,7 @@ class OptionLib:
 
 
 
-    def IVP(self,
-            riskfreerate=None,
-            dividendRate=None,
-            opt=None
-            ):
 
-        """
-        :return: All the Implied Vol for all strikes and expiration for Puts
-        """
-        opt = opt if opt else self.opt
-        r = riskfreerate if riskfreerate else self.risk_free_rate
-        q = dividendRate if dividendRate else self.dividend_rate
-
-        current_date = opt.quote_time.date()  ## get the current date
-        expiry_dates = [date for date in opt.expiry_dates if date > current_date]
-        s = opt.underlying_price  # undelying price
-        num_expiry = len(expiry_dates)
-        res = []
-
-        for ei in range(num_expiry):
-            expiry = expiry_dates[ei]
-            data = opt.get_put_data(expiry=expiry)
-            toe = ((expiry - current_date).days)
-            premium = (data['Ask'] + data['Bid']) / 2.0
-            strikes = data.index.get_level_values('Strike')
-            datalen = len(data)
-            for j in range(datalen):
-                res.append([toe, strikes[j], data['IV'].values[j]])
-        self.lastIVP = res
-        return res
-
-
-    def IVC(self,
-            riskfreerate=None,
-            dividendRate=None,
-            opt=None
-            ):
-
-        """
-        :return: All the Implied Vol for all strikes and expiration for Calls
-        """
-        opt = opt if opt else self.opt
-        r = riskfreerate if riskfreerate else self.risk_free_rate
-        q = dividendRate if dividendRate else self.dividend_rate
-
-        current_date = opt.quote_time.date()  ## get the current date
-        expiry_dates = [date for date in opt.expiry_dates if date > current_date]
-        s = opt.underlying_price  # undelying price
-        num_expiry = len(expiry_dates)
-        res = []
-
-        for ei in range(num_expiry):
-            expiry = expiry_dates[ei]
-            data = opt.get_call_data(expiry=expiry)
-            toe = (expiry - current_date).days
-            premium = (data['Ask'] + data['Bid']) / 2.0
-            strikes = data.index.get_level_values('Strike')
-
-            for j in range(len(data)):
-                res.append([toe, strikes[j], data['IV'].values[j]])
-        self.lastIVC = res
-        return res
 
 
 
@@ -491,50 +340,16 @@ class OptionLib:
     #                                       Plotting                                                        #
     #########################################################################################################
 
-    """
-        # LEGACY METHOD - TO BE DELETED AFTER ENSURING BACKWARD COMPATIBILITY
-
-    def plot_IV_d(self,
-                option_type,
-                expiry_index,
-                opt=None
-                ):
-
-        opt = opt if opt else self.opt
-
-        data, strike, IV = self.IV_TT(option_type, expiry_index, opt)
-
-
-        plt.figure(figsize=(16, 7))
-        a = plt.scatter(strike, IV, c='r', label="IV by solving BSM")
-        b = plt.scatter(strike, data['IV'], c='b', label="IV from Yahoo Finance")
-
-        plt.grid()
-        plt.xlabel('strike')
-
-
-        if option_type == 'c':
-            plt.ylabel('Implied Volatility for call option')
-            plt.legend((a, b), ("IV(call) by solving BSM", "IV(call) from Yahooe"))
-        elif option_type == 'p':
-            plt.ylabel('Implied Volatility for put options')
-            plt.legend((a, b), ("IV(put) by solving BSM", "IV(put) from Yahoo"))
-    """
 
     def plot_smile(self,
                    expiry_index,
-                   opt=None
                    ):
         """
-
-        :param k_call: Array of strike prices for call
-        :param IV_call: Corresponding IV for call
-        :param k_put: Array of strike prices for puts
-        :param IV_put: Corresponding IV for puts
+        Plot the IV smile for both calls and puts per timestamp
         :return:
         """
-        opt = opt if opt else self.opt
-
+        pass
+        opt = None
         data_call, k_call, IV_call = self.IV_TT('c', expiry_index, opt)
         data_put, k_put, IV_put = self.IV_TT('p', expiry_index, opt)
 
@@ -553,29 +368,23 @@ class OptionLib:
                      ):
         try:
             assert option_type == 'c' or option_type =='p'
-            plotdata = []
-            color = None
-            if option_type == 'c':
-                plotdata = self.lastIVC if self.lastIVC else self.IVC(opt=opt)
-                color = 'lime'
-            elif option_type == 'p':
-                plotdata = self.lastIVP if self.lastIVP else self.IVP(opt=opt)
-                color = 'red'
+            plotdata = self.IVs[option_type]
+            color = 'red' if option_type == 'p' else 'green'
 
             xaxis = [plotdata[i][0] for i in range(len(plotdata))]
             yaxis = [plotdata[i][1] for i in range(len(plotdata))]
             zaxis = [plotdata[i][2] for i in range(len(plotdata))]
 
-            fig = plt.figure(figsize=(20, 12))
-            ax = fig.add_subplot(111, projection='3d')
+            fig1 = plt.figure(figsize=(20, 12))
+            ax = fig1.add_subplot(111, projection='3d')
             ax.view_init()
             ax.scatter(xaxis, yaxis, zaxis, c=color)
             plt.xlabel("Time to Expiration (days)")
             plt.ylabel("Strikes")
             plt.title("Implied Volatility")
 
-            f2 = plt.figure(figsize=(20, 12))
-            ax2 = f2.add_subplot(111, projection='3d')
+            fig2 = plt.figure(figsize=(20, 12))
+            ax2 = fig2.add_subplot(111, projection='3d')
             ax2.view_init()
             ax2.plot_trisurf(xaxis, yaxis, zaxis, cmap=cm.jet)
             plt.xlabel("Time to Expiration (days)")
