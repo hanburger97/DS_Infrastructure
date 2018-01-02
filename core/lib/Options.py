@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 from matplotlib import animation
+import math
 from threading import Thread, ThreadError
 
 from core.lib.Black_Scholes import Black_Scholes
@@ -174,6 +175,84 @@ class OptionLib:
         del df['rho'], df['toe']
         df['%'] = (df['%'] * 100)//100
         return df
+
+    # RLD-8
+    def data_building_core(self):
+        try:
+            assert self.opt
+            global SYNCFLAG
+            SYNCFLAG = 1
+
+            df= self.opt.get_all_data()
+            dflen=len(df.index.values)
+
+            t_index = []
+            n_index = []
+            m_index = []
+
+            d={}
+
+            for i in range(dflen):
+
+                dfindex=df.index.values[i]
+                row = df.loc[dfindex]
+
+                exp = dfindex[1].to_pydatetime()
+                curr = row['Quote_Time'].to_pydatetime()
+                # Days until expiration
+
+                toe = float((exp - curr).days)/365.0
+                dte = round(toe * 365)
+
+                otype = 'c' if dfindex[2] == 'call' else 'p'
+
+                #Index will be using expiry_date index
+                expd = exp.date()
+
+                j = self.opt.expiry_dates.index(expd)
+
+
+                bso = Black_Scholes(
+                    option_type=otype,
+                    price=row['Underlying_Price'],
+                    strike=dfindex[0],
+                    interest_rate=self.risk_free_rate,
+                    dividend_yield=self.dividend_rate,
+                    volatility=row['IV'],
+                    expiry=toe
+                )
+
+                # Check if the toe exists or not
+                if not (j in d):
+                    d[j] = {
+                        'matrix': [],
+                        'indexes': []
+                    }
+
+                #Append to it regardless
+                # [ [ Ask, Bid, Last, Vol, %, sigma, delta, gamma, kappa, theta, rho, dte, symbol] , (...) ]
+                d[j]['matrix'].append([
+                    row['Ask'], row['Bid'], row['Last'], row['Vol'], row['PctChg'], row['IV'], bso.delta, bso.gamma,
+                    bso.kappa, bso.theta, bso.rho, dfindex[3]
+                ])
+                # [ ( type, strike), ... ]
+                d[j]['indexes'].append(
+                    (otype, dfindex[0])
+                )
+
+
+            """
+            for k in d.keys():
+
+                d[k]['matrix'] = np.array(d[k]['matrix']).reshape(len(d[k]['matrix']), 11)
+
+            """
+
+            SYNCFLAG = 0
+            return d
+
+        except AssertionError:
+            raise DataFormatError('No Data from Yahoo, Check Internet Connection')
 
     def data_building(self, r=None, q=None):
 
