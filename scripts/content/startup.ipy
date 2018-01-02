@@ -1,3 +1,7 @@
+# Go up one dir, and import lib
+import sys
+sys.path.append("..")
+
 # Some basic import
 import pandas as pd
 from numpy import sqrt,mean,log,diff
@@ -13,9 +17,6 @@ from pandas_datareader.data import Options
 import pandas_datareader.data as web
 import datetime
 
-# Go up one dir, and import lib
-import sys
-sys.path.append("..")
 
 from core.lib.Options import OptionLib
 
