@@ -99,8 +99,6 @@ class OptionLib:
         self.data_init()
 
 
-
-
     #########################################################################################################
     #                                   Data Building and Housekeeping                                      #
     #########################################################################################################
@@ -110,8 +108,12 @@ class OptionLib:
         self.opt = Options(self.symbol, self.data_provider)
         self.__last_quote = self.opt.get_call_data().iloc[0]['Quote_Time'].to_pydatetime()
         self.__underlying_price = self.opt.underlying_price
-        self.IVs = {'c': [], 'p': []}
+
         self.__data = self.data_building(r=self.risk_free_rate, q=self.dividend_rate)
+
+        self.IVs = {'c': [], 'p': []}
+        self.data_aggregate_IV()
+
 
     @waitsync(syncflag=SYNCFLAG)
     def data_refresh(self):
@@ -257,10 +259,6 @@ class OptionLib:
             raise DataFormatError(e.args)
 
 
-
-
-
-
     #########################################################################################################
     #                                      Legacy Calculations...                                           #
     #########################################################################################################
@@ -298,8 +296,6 @@ class OptionLib:
             dividendrate=dividendrate
         )
 
-
-
     #########################################################################################################
     #                                       Helpers and Tools                                               #
     #########################################################################################################
@@ -331,9 +327,36 @@ class OptionLib:
             raise DataFormatError('Must input a pandas.DataFrame')
 
 
+    def data_IVpT(self,
+                  expiry_index=0
+                  ):
+        """
+        Compute IV per timestamp
+        :return: calls and puts
+        """
+        exp = self.opt.expiry_dates[expiry_index]
+        curr = self.__last_quote
+        toe = (datetime.datetime.combine(exp, datetime.time.min) - curr).days
 
+        calls, puts = [], []
 
-
+        lc = len(self.IVs['c'])
+        lp = len(self.IVs['p'])
+        # calls = [ [ Strike, IV] , ... ]
+        for i in range(lc):
+            row = self.IVs['c'][i]
+            if row[0] == toe:
+                calls.append([
+                    row[1],
+                    row[2]
+                ])
+        for i in range(lp):
+            row = self.IVs['p'][i]
+            if row[0] == toe:
+                puts.append([
+                    row[1],
+                    row[2]
+                ])
 
 
     #########################################################################################################
@@ -346,17 +369,22 @@ class OptionLib:
                    ):
         """
         Plot the IV smile for both calls and puts per timestamp
-        :return:
-        """
-        pass
-        opt = None
-        data_call, k_call, IV_call = self.IV_TT('c', expiry_index, opt)
-        data_put, k_put, IV_put = self.IV_TT('p', expiry_index, opt)
+\        """
+        calls, puts = self.data_IVpT(expiry_index=expiry_index)
 
+        k_calls, IV_calls = [], []
+        k_puts, IV_puts = [], []
+
+        for el in calls:
+            k_calls.append(el[0])
+            IV_calls.append(el[1])
+        for el in puts:
+            k_puts.append(el[0])
+            IV_puts.append(el[1])
 
         plt.figure(figsize=(16, 7))
-        e = plt.scatter(k_call, IV_call, c='red', label="IV(call options)")
-        f = plt.scatter(k_put, IV_put, c='white', label="IV(put options)")
+        e = plt.scatter(k_calls, IV_calls, c='red', label="IV(call options)")
+        f = plt.scatter(k_puts, IV_puts, c='white', label="IV(put options)")
         plt.xlabel('strike')
         plt.ylabel('Implied Volatility')
         plt.legend((e, f), ("IV (call options)", "IV (put options)"))
