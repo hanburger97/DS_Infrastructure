@@ -68,8 +68,8 @@ class OptionLib:
     def __init__(self,
                  symbol='SPY',
                  dataprovider='yahoo',
-                 riskfree=0.00,
-                 dividendrate=0.00
+                 riskfree=0.01,
+                 dividendrate=0.01
                  ):
 
         self.symbol = symbol
@@ -97,6 +97,10 @@ class OptionLib:
         self.__underlying_price = None
         self.__data=None
 
+
+        self.__data_core = None
+        self.data_expiry_index=0
+        self.tickSize = 0.5
         self.data_init()
 
 
@@ -158,6 +162,69 @@ class OptionLib:
         df = self.__data.copy()
         return self.display_format(df)
 
+    @property
+    def data_core(self):
+
+        print('Underlying @ {:.2f} \n Last Option Quote: {}'.format(self.__underlying_price, self.__last_quote))
+        obj = self.__data_core[self.data_expiry_index]
+        data = np.array(obj['matrix'])
+        indexes = obj['indexes']
+
+        strikes = [index[1] for index in indexes]
+        minStrike = min(strikes)
+        maxStrike = max(strikes)
+
+        strikeLevels = np.arange(minStrike, (maxStrike + self.tickSize), self.tickSize).tolist()
+
+        #separating puts and calls, then concatenate them afterward
+        c = []
+        p = []
+        ci = []
+        pi = []
+        for i in range(len(data)):
+            if indexes[i][0] == 'c':
+                c.append(data[i])
+                ci.append(indexes[i])
+            else:
+                p.append(data[i])
+                pi.append(indexes[i])
+
+        data = c + p
+        indexes = ci + pi
+
+
+        # For DF indexing
+        names = ['Type', 'Strike']
+        levels = [['Calls','Puts'],strikeLevels]
+        labels = [[0 if index[0] == 'c' else 1 for index in indexes], [strikeLevels.index(ind[1]) for ind in indexes]]
+        columns = [
+            'Ask',
+            'Bid',
+            'Last',
+            'Vol',
+            '%',
+            '\u03C3',
+            '\u0394',
+            '\u039A',
+            '\u0393',
+            '\u03A1',
+            'Days to Exp.',
+            'Symbol'
+        ]
+
+        I = pd.MultiIndex(
+            levels=levels,
+            labels=labels,
+            names=names
+        )
+
+        df = pd.DataFrame(data=data, index=I, columns=columns)
+        return df
+
+
+
+
+
 
     def display_format(self, df):
         # Reformatting greek letters with UTF-8 Encoding for Esthetics
@@ -186,9 +253,6 @@ class OptionLib:
             df= self.opt.get_all_data()
             dflen=len(df.index.values)
 
-            t_index = []
-            n_index = []
-            m_index = []
 
             d={}
 
@@ -247,9 +311,9 @@ class OptionLib:
                 d[k]['matrix'] = np.array(d[k]['matrix']).reshape(len(d[k]['matrix']), 11)
 
             """
+            self.__data_core = d
 
             SYNCFLAG = 0
-            return d
 
         except AssertionError:
             raise DataFormatError('No Data from Yahoo, Check Internet Connection')
