@@ -11,6 +11,7 @@ RUN mkdir /root/.jupyter && mkdir /root/.jupyter/custom
 RUN mkdir /root/.ipython && mkdir /root/.ipython/profile_default && mkdir /root/.ipython/profile_default/startup
 
 COPY ./scripts/content/custom.css /root/.jupyter/custom
+COPY ./scripts/content/logo.png /root/.jupyter/custom
 COPY ./scripts/content/startup.ipy /root/.ipython/profile_default/startup
 COPY ./core/ /core/
 

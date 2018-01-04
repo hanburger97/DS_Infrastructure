@@ -32,6 +32,10 @@ jtplot.style(theme='monokai')
 
 
 # Initialize olib
-olib = OptionLib()
+
+OL = OptionLib()
+
+
+
 # Starting the auto refresh feature
-olib.data_auto_refresh()
+OL.data_auto_refresh()

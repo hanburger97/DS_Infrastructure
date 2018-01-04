@@ -1,3 +1,17 @@
+"""
+[ RnD ]  Research Lab :: Options Library
+
+Written by: Han Y. Xiao, Technical Partner
+
+ Xiao Theodore & Co. | All Rights Reserved 2018
+
+===============================================================
+
+Nomenclature and Naming: Most Client's Methods are CAPITALIZED
+
+"""
+
+
 import pandas as pd
 import numpy as np
 from pandas_datareader.data import Options
@@ -29,34 +43,45 @@ class DataFormatError(Exception):
 #############################################   Some Method Wrapper    #################################################
 
 
-def autorefresh(func):
+def parallelProcess(func):
 
     def wrapper(object):
         try:
             worker = Thread(target=func, args=(object,))
             worker.setDaemon(True)
             worker.start()
-            print('Data Auto-Refresh [ STARTED ] ')
         except ThreadError as te:
             print(te)
         except Exception as e:
             print(e)
     return wrapper
 
-def waitsync(syncflag):
-    def g(func):
-        def wrapper(object):
-            try:
-                while syncflag == 1:
-                    print('Data Sync [ IN PROGRESS ] ')
-                    if syncflag == 0:
-                        print('Data Sync [ COMPLETED ] ')
-                        break
-                func(object)
-            except Exception as e:
-                print(e)
-        return wrapper
-    return g
+
+def requireSyncFlag(func):
+
+    def wrapper(object):
+        try:
+            global SYNCFLAG
+            print('Data Building [ IN PROGRESS ] ')
+            SYNCFLAG = 1
+            func(object)
+            print('Data Building [ COMPLETED ] ')
+            SYNCFLAG = 0
+        except Exception as e:
+            print(e)
+    return wrapper
+
+def waitSyncFlag(func):
+    def wrapper(object):
+        try:
+            global SYNCFLAG
+            while SYNCFLAG == 1:
+                pass
+            func(object)
+        except Exception as e:
+            print(e)
+    return wrapper
+
 
 
 ################################################      Main Class      ##################################################
@@ -72,7 +97,7 @@ class OptionLib:
                  dividendrate=0.01
                  ):
 
-        self.symbol = symbol
+        self.SYMBOL = symbol
         self.data_provider = dataprovider
 
         self.__oldsymbol = symbol
@@ -81,25 +106,18 @@ class OptionLib:
         self.risk_free_rate = riskfree
         self.dividend_rate = dividendrate
 
-
         self.opt = None
 
-        # each c or p array contains array of [ [ (T-t), strike, IV ] , ... ]
-        self.IVs = {
-            'c':[],
-            'p':[]
-        }
-
-        self.lastIVP = None
-        self.lastIVC = None
+        self.IVs = {'c': [], 'p': []}
 
         self.__last_quote=None
         self.__underlying_price = None
+
         self.__data=None
-
-
         self.__data_core = None
-        self.data_expiry_index=0
+
+        self.data_selection = (0, 'c')
+
         self.tickSize = 0.5
         self.data_init()
 
@@ -107,96 +125,60 @@ class OptionLib:
     #########################################################################################################
     #                                   Data Building and Housekeeping                                      #
     #########################################################################################################
-
+    @waitSyncFlag
     def data_init(self):
 
-        self.opt = Options(self.symbol, self.data_provider)
-        self.__last_quote = self.opt.get_call_data().iloc[0]['Quote_Time'].to_pydatetime()
+        self.opt = Options(self.SYMBOL, self.data_provider)
         self.__underlying_price = self.opt.underlying_price
-
-        self.__data = self.data_building(r=self.risk_free_rate, q=self.dividend_rate)
-
+        self.data_building_core()
         self.IVs = {'c': [], 'p': []}
         self.data_aggregate_IV()
 
 
-    @waitsync(syncflag=SYNCFLAG)
+    @waitSyncFlag
     def data_refresh(self):
 
-        # Check if symbol has been updated
-        if not (self.symbol == self.__oldsymbol and self.data_provider == self.__olddataprovider):
-            self.__oldsymbol, self.__olddataprovider = self.symbol, self.data_provider
-            self.data_init()
-        # Check if there is a new quote
-        if not self.opt.get_call_data().iloc[0]['Quote_Time'].to_pydatetime() == self.__last_quote:
-            self.__underlying_price = self.opt.underlying_price
-            self.__data = self.data_building(r=self.risk_free_rate, q=self.dividend_rate)
+        self.__underlying_price = self.opt.underlying_price
+        self.data_building_core()
+        self.IVs = {'c': [],'p': []}
+        self.data_aggregate_IV()
 
-            self.IVs = {'c': [],'p': []}
-            self.data_aggregate_IV()
-
-            self.__last_quote = self.opt.get_call_data().iloc[0]['Quote_Time'].to_pydatetime()
-
-            #Legacy
-            self.lastIVP = None
-            self.lastIVC = None
-
-
-    @autorefresh
+    @parallelProcess
     def data_auto_refresh(self):
         # This should be running in another thread
         while True:
-            self.data_refresh()
+            if not (self.SYMBOL == self.__oldsymbol and self.data_provider == self.__olddataprovider):
+                self.__oldsymbol, self.__olddataprovider = self.SYMBOL, self.data_provider
+                self.__last_quote = self.opt.get_call_data().iloc[0]['Quote_Time'].to_pydatetime()
+                self.data_init()
+                print('Data Initialization for {} [ COMPLETE ]'.format(self.SYMBOL))
+            if not (self.opt.get_call_data().iloc[0]['Quote_Time'].to_pydatetime() == self.__last_quote):
+                self.__last_quote = self.opt.get_call_data().iloc[0]['Quote_Time'].to_pydatetime()
+                self.data_refresh()
+                print('Data Refreshing for {} [ COMPLETE ]'.format(self.SYMBOL))
 
-    def explore_expiry(self, opt=None):
-        #Legacy...
-        opt = opt if opt else self.opt
+    @property
+    def INDEX(self):
+        opt = self.opt
         d ={'Expiry Dates':opt.expiry_dates}
-        return pd.DataFrame(data=d)
-
-
-    @property
-    def data(self):
-        # Making self.__data read only
-        print('Underlying @ {:.2f} \n Last Option Quote: {}'.format(self.__underlying_price, self.__last_quote))
-        df = self.__data.copy()
-        return self.display_format(df)
+        return pd.DataFrame(data=d).transpose()
 
     @property
-    def data_core(self):
+    def DATA(self):
 
-        print('Underlying @ {:.2f} \n Last Option Quote: {}'.format(self.__underlying_price, self.__last_quote))
-        obj = self.__data_core[self.data_expiry_index]
+        print('Underlying @ {:.2f} \nLatest Option Quote @: {}\n'.format(self.__underlying_price, self.__last_quote))
+        print('Current Contracts Expires @ {}\n'.format(self.opt.expiry_dates[self.data_selection[0]]))
+        obj = self.__data_core[self.data_selection[0]]
         data = np.array(obj['matrix'])
         indexes = obj['indexes']
+        filtered_matrix = []
+        filtered_indexes = []
 
-        strikes = [index[1] for index in indexes]
-        minStrike = min(strikes)
-        maxStrike = max(strikes)
-
-        strikeLevels = np.arange(minStrike, (maxStrike + self.tickSize), self.tickSize).tolist()
-
-        #separating puts and calls, then concatenate them afterward
-        c = []
-        p = []
-        ci = []
-        pi = []
         for i in range(len(data)):
-            if indexes[i][0] == 'c':
-                c.append(data[i])
-                ci.append(indexes[i])
-            else:
-                p.append(data[i])
-                pi.append(indexes[i])
+            if indexes[i][0] == self.data_selection[1]:
+                filtered_matrix.append(data[i])
+                filtered_indexes.append(indexes[i][1])
 
-        data = c + p
-        indexes = ci + pi
-
-
-        # For DF indexing
-        names = ['Type', 'Strike']
-        levels = [['Calls','Puts'],strikeLevels]
-        labels = [[0 if index[0] == 'c' else 1 for index in indexes], [strikeLevels.index(ind[1]) for ind in indexes]]
         columns = [
             'Ask',
             'Bid',
@@ -204,78 +186,38 @@ class OptionLib:
             'Vol',
             '%',
             '\u03C3',
-            '\u0394',
             '\u039A',
+            '\u0394',
             '\u0393',
+            '\u0398',
             '\u03A1',
-            'Days to Exp.',
+            'Days to Expiry',
             'Symbol'
         ]
-
-        I = pd.MultiIndex(
-            levels=levels,
-            labels=labels,
-            names=names
-        )
-
-        df = pd.DataFrame(data=data, index=I, columns=columns)
-        return df
-
-
-
-
-
-
-    def display_format(self, df):
-        # Reformatting greek letters with UTF-8 Encoding for Esthetics
-        df['\u03C3'] = df['sigma']
-        del df['sigma']
-        df['\u0394'] = df['delta']
-        del df['delta']
-        df['\u0393'] = df['gamma']
-        del df['gamma']
-        df['\u0398'] = df['theta']
-        del df['theta']
-        df['\u039A'] = df['kappa']
-        del df['kappa']
-        df['\u03A1'] = df['rho']
-        del df['rho'], df['toe']
-        df['%'] = (df['%'] * 100)//100
+        df = pd.DataFrame(data=filtered_matrix, index=filtered_indexes, columns=columns)
         return df
 
     # RLD-8
+    @requireSyncFlag
     def data_building_core(self):
         try:
             assert self.opt
-            global SYNCFLAG
-            SYNCFLAG = 1
-
-            df= self.opt.get_all_data()
-            dflen=len(df.index.values)
-
-
-            d={}
-
+            df = self.opt.get_all_data()
+            dflen = len(df.index.values)
+            d = {}
             for i in range(dflen):
 
-                dfindex=df.index.values[i]
+                dfindex = df.index.values[i]
                 row = df.loc[dfindex]
-
                 exp = dfindex[1].to_pydatetime()
                 curr = row['Quote_Time'].to_pydatetime()
-                # Days until expiration
-
                 toe = float((exp - curr).days)/365.0
-                dte = round(toe * 365)
-
+                # Days until expiration
+                dte = round(toe * 365) + 1
                 otype = 'c' if dfindex[2] == 'call' else 'p'
-
-                #Index will be using expiry_date index
+                # Index will be using expiry_date index
                 expd = exp.date()
-
                 j = self.opt.expiry_dates.index(expd)
-
-
                 bso = Black_Scholes(
                     option_type=otype,
                     price=row['Underlying_Price'],
@@ -285,190 +227,63 @@ class OptionLib:
                     volatility=row['IV'],
                     expiry=toe
                 )
-
-                # Check if the toe exists or not
+                # Check if the index exists or not
                 if not (j in d):
                     d[j] = {
                         'matrix': [],
                         'indexes': []
                     }
-
-                #Append to it regardless
                 # [ [ Ask, Bid, Last, Vol, %, sigma, delta, gamma, kappa, theta, rho, dte, symbol] , (...) ]
                 d[j]['matrix'].append([
-                    row['Ask'], row['Bid'], row['Last'], row['Vol'], row['PctChg'], row['IV'], bso.delta, bso.gamma,
-                    bso.kappa, bso.theta, bso.rho, dfindex[3]
+                    row['Ask'], row['Bid'], row['Last'], int(row['Vol']), row['PctChg'], round(row['IV'], 2), round(bso.delta, 2), round(bso.gamma,2),
+                    round(bso.kappa, 2), round(bso.theta,  2), round(bso.rho, 2), dte, dfindex[3]
                 ])
                 # [ ( type, strike), ... ]
                 d[j]['indexes'].append(
                     (otype, dfindex[0])
                 )
-
-
-            """
-            for k in d.keys():
-
-                d[k]['matrix'] = np.array(d[k]['matrix']).reshape(len(d[k]['matrix']), 11)
-
-            """
             self.__data_core = d
-
-            SYNCFLAG = 0
-
         except AssertionError:
             raise DataFormatError('No Data from Yahoo, Check Internet Connection')
 
-    def data_building(self, r=None, q=None):
-
-        try:
-            assert self.opt
-            global SYNCFLAG
-            SYNCFLAG = 1
-            rawdf = self.opt.get_all_data()
-            rowLen = len(rawdf.index.values)
-            r = r if r else self.risk_free_rate
-            q = q if q else self.dividend_rate
-            delta, gamma, theta, kappa, rho = [], [], [], [], []
-            toes = []
-            # O(n) Linear runtime
-            #   For each row, compute Black-Scholes model calculations
-            for i in range(rowLen):
-
-                # Index tuple: (strike, timestamp, type, symbol)
-                index_tuple = rawdf.index.values[i]
-                row = rawdf.loc[index_tuple]
-                otype = 'c' if index_tuple[2] == 'call' else 'p'
-
-                # toe: time until expiration in years (floating  pt)
-                exp = index_tuple[1].to_pydatetime()
-                curr = row['Quote_Time'].to_pydatetime()
-                toe = float((exp-curr).days)/365.0
-
-                #initiate a black scholes object which also makes the necessary calculations
-                #   then append to corresponding array to be zipped
-                bso = Black_Scholes(
-                    option_type=otype,
-                    price=row['Underlying_Price'],
-                    strike=index_tuple[0],
-                    interest_rate=r,
-                    dividend_yield=q,
-                    volatility=row['IV'],
-                    expiry=toe
-                )
-                delta.append(bso.delta)
-                gamma.append(bso.gamma)
-                theta.append(bso.theta)
-                kappa.append(bso.kappa)
-                rho.append(bso.rho)
-                toes.append(toe)
-                # Free em memory
-                del bso
-
-            # Round it into integers
-            toes = np.around(toes, decimals=0)
-
-            # Check length before zipping in the Dataframe
-            if not (len(delta) == len(gamma) ==
-                    len(theta) == len(rho) ==
-                    len(kappa) == rowLen
-                    ): raise DataFormatError(
-                        'Array of Greeks cannot be zipped since their length is not' +
-                        ' compatible with DF Height'
-                    )
-
-            rawdf['delta'], rawdf['gamma'], rawdf['theta'], rawdf['kappa'], rawdf['rho'], rawdf['toe'] = \
-                delta, gamma, theta, kappa, rho, toes
-
-            # Housekleeping
-            rawdf['%'], rawdf['sigma'] = rawdf['PctChg'], rawdf['IV']
-
-            # Delete useless data from raw dataframe, still accessible through opt object
-            del rawdf['IV'], rawdf['Chg'], rawdf['PctChg'], rawdf['Open_Int'], rawdf['Root'], rawdf['Underlying'], \
-                rawdf['IsNonstandard'], rawdf['Quote_Time'], rawdf['Last_Trade_Date'], rawdf['Underlying_Price'], \
-                rawdf['JSON']
-
-            # Free some mem
-            del kappa, delta, gamma, rho
-
-            print('\nData Updated & Built for {} :: [ COMPLETE ] \nLatest quote: {}'.format(self.symbol, self.__last_quote))
-            SYNCFLAG = 0
-
-            return rawdf
-
-        except AssertionError:
-            print('You must first declare a symbol')
-
-        except RuntimeWarning:
-            print('Warning')
-
-        except Exception as e:
-            raise DataFormatError(e.args)
-
-
-    #########################################################################################################
-    #                                      Legacy Calculations...                                           #
-    #########################################################################################################
-
-
-    def BSM(self,
-            option_type,
-            sigma,
-            underlying_price,
-            strike,
-            time,
-            riskfreerate=None,
-            dividendrate=None,
-            ):
-
-        """
-        :param option_type: string 'c' for call and 'p' for puts
-        :param sigma: stddev ratio (e.g. 1.0 := 100%)
-        :param underlying_price: denoted in floating decimal
-        :param strike: denoted in floating decimal
-        :param time: nb of days??
-        :param riskfreerate: percentage over decimal (0.01 := 1%)
-        :param dividendrate:percentage over decimal (0.01 := 1%)
-        :return: floating decimal of theoretical price of the option
-        """
-
-
-        return Black_Scholes.bsm_static_pricing(
-            option_type=option_type,
-            sigma=sigma,
-            underlying_price=underlying_price,
-            strike=strike,
-            time=time,
-            riskfreerate=riskfreerate,
-            dividendrate=dividendrate
+    @property
+    def VIEW_SELECTION(self):
+        return 'CURRENTLY SELECTED DATA :: [ INDEX : {} | TYPE : {} | SYMBOL : {} ]'.format(
+            self.data_selection[0], self.data_selection[1], self.SYMBOL
         )
 
-    #########################################################################################################
-    #                                       Helpers and Tools                                               #
-    #########################################################################################################
+    def SELECT(self,
+               INDEX=0,
+               TYPE='c',
+               ):
+        """
+        Setting the data-selecting tuple
+        """
+        try:
+            assert TYPE == 'c' or TYPE == 'p'
+            assert INDEX < len(self.opt.expiry_dates)
+            self.data_selection = (INDEX, TYPE)
+        except AssertionError:
+            raise DataFormatError('Expiry index and option type ("c" or "p") must be valid')
 
-
-
+    @requireSyncFlag
     def data_aggregate_IV(self):
         """
         Aggregate Contract's sigma by call and puts then store them in [ Time to Expiration, Strike, Volatility ]
          format for later plotting
         """
-
         try:
-            assert type(self.__data) == pd.DataFrame
-            df = self.__data.copy()
+            assert self.__data_core
+            d = self.__data_core.copy()
 
-            rowlen = len(df.index.values)
-
-            for i in range(rowlen):
-                index = df.index.values[i]
-                row = df.loc[index]
-                # Format : [ Time to Expiration, Strike, Volatility ]
-                if index[2] == 'call':
-                    self.IVs['c'].append([row['toe'], index[0], row['sigma']])
-                elif index[2] == 'put':
-                    self.IVs['p'].append([row['toe'], index[0], row['sigma']])
-
+            for t in d.keys():
+                matrix = d[t]['matrix']
+                indexes = d[t]['indexes']
+                for i in range(len(matrix)):
+                    # Format : [ Time to Expiration, Strike, Volatility ]
+                    self.IVs[indexes[i][0]].append(
+                        [ matrix[i][11], indexes[i][1], matrix[i][5] ]
+                    )
         except AssertionError:
             raise DataFormatError('Must input a pandas.DataFrame')
 
@@ -480,30 +295,16 @@ class OptionLib:
         Compute IV per timestamp
         :return: calls and puts
         """
-        exp = self.opt.expiry_dates[expiry_index]
-        curr = self.__last_quote
-
-        #toe = (datetime.datetime.combine(exp, datetime.time.min) - curr).days
-        toe = exp.day - curr.day
+        dt = self.__data_core[expiry_index].copy()
+        matrix = dt['matrix']
+        indexes = dt['indexes']
         calls, puts = [], []
-
-        lc = len(self.IVs['c'])
-        lp = len(self.IVs['p'])
         # calls = [ [ Strike, IV] , ... ]
-        for i in range(lc):
-            row = self.IVs['c'][i]
-            if int(row[0]) == toe:
-                calls.append([
-                    row[1],
-                    row[2]
-                ])
-        for i in range(lp):
-            row = self.IVs['p'][i]
-            if int(row[0]) == toe:
-                puts.append([
-                    row[1],
-                    row[2]
-                ])
+        for i in range(len(matrix)):
+            if indexes[i][0] == 'c':
+                calls.append([indexes[i][1], matrix[i][5]])
+            else:
+                puts.append([indexes[i][1], matrix[i][5]])
         return calls, puts
 
 
@@ -511,13 +312,13 @@ class OptionLib:
     #                                       Plotting                                                        #
     #########################################################################################################
 
-
-    def plot_smile(self,
-                   expiry_index,
+    def PLOT_SMILE(self,
+                   expiry_index=None,
                    ):
         """
         Plot the IV smile for both calls and puts per timestamp
-\        """
+        """
+        expiry_index = expiry_index if expiry_index else self.data_selection[0]
         calls, puts = self.data_IVpT(expiry_index=expiry_index)
 
         k_calls, IV_calls = [], []
@@ -537,13 +338,13 @@ class OptionLib:
         plt.ylabel('Implied Volatility')
         plt.legend((e, f), ("IV (call options)", "IV (put options)"))
 
-
-    def plot_surface(self,
+    def PLOT_SURFACE(self,
                      option_type=None,
-                     opt=None
                      ):
         try:
-            assert option_type == 'c' or option_type =='p'
+            if option_type:
+                assert option_type == 'c' or option_type =='p'
+            option_type = option_type if option_type else self.data_selection[1]
             plotdata = self.IVs[option_type]
             color = 'red' if option_type == 'p' else 'green'
 
@@ -575,6 +376,6 @@ class OptionLib:
 if __name__ == '__main__':
 
 
-    olib = OptionLib()
-    olib.data_IVpT(0)
 
+
+    pass
