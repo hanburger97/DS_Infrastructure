@@ -157,45 +157,6 @@ class OptionLib:
                 self.data_refresh()
                 print('Data Refreshing for {} [ COMPLETE ]'.format(self.SYMBOL))
 
-    @property
-    def INDEX(self):
-        opt = self.opt
-        d ={'Expiry Dates':opt.expiry_dates}
-        return pd.DataFrame(data=d).transpose()
-
-    @property
-    def DATA(self):
-
-        print('Underlying @ {:.2f} \nLatest Option Quote @: {}\n'.format(self.__underlying_price, self.__last_quote))
-        print('Current Contracts Expires @ {}\n'.format(self.opt.expiry_dates[self.data_selection[0]]))
-        obj = self.__data_core[self.data_selection[0]]
-        data = np.array(obj['matrix'])
-        indexes = obj['indexes']
-        filtered_matrix = []
-        filtered_indexes = []
-
-        for i in range(len(data)):
-            if indexes[i][0] == self.data_selection[1]:
-                filtered_matrix.append(data[i])
-                filtered_indexes.append(indexes[i][1])
-
-        columns = [
-            'Ask',
-            'Bid',
-            'Last',
-            'Vol',
-            '%',
-            '\u03C3',
-            '\u039A',
-            '\u0394',
-            '\u0393',
-            '\u0398',
-            '\u03A1',
-            'Days to Expiry',
-            'Symbol'
-        ]
-        df = pd.DataFrame(data=filtered_matrix, index=filtered_indexes, columns=columns)
-        return df
 
     # RLD-8
     @requireSyncFlag
@@ -246,6 +207,133 @@ class OptionLib:
         except AssertionError:
             raise DataFormatError('No Data from Yahoo, Check Internet Connection')
 
+    @requireSyncFlag
+    def data_aggregate_IV(self):
+        """
+        Aggregate Contract's sigma by call and puts then store them in [ Time to Expiration, Strike, Volatility ]
+        format for later plotting
+        """
+        try:
+            assert self.__data_core
+            d = self.__data_core.copy()
+
+            for t in d.keys():
+                matrix = d[t]['matrix']
+                indexes = d[t]['indexes']
+                for i in range(len(matrix)):
+                # Format : [ Time to Expiration, Strike, Volatility ]
+                    self.IVs[indexes[i][0]].append(
+                        [ matrix[i][11], indexes[i][1], matrix[i][5] ]
+                    )
+
+        except AssertionError:
+            raise DataFormatError('Must input a pandas.DataFrame')
+
+    def data_IVpT(self,
+                expiry_index=0
+                ):
+        """
+        Compute IV per timestamp
+        :return: calls and puts
+        """
+        dt = self.__data_core[expiry_index].copy()
+        matrix = dt['matrix']
+        indexes = dt['indexes']
+        calls, puts = [], []
+        # calls = [ [ Strike, IV] , ... ]
+        for i in range(len(matrix)):
+            if indexes[i][0] == 'c':
+                calls.append([indexes[i][1], matrix[i][5]])
+            else:
+                puts.append([indexes[i][1], matrix[i][5]])
+        return calls, puts
+
+
+    @requireSyncFlag
+    def data_aggregate_greeks(self,strike=None, sigma=0.1):
+        """
+
+        :return:
+        """
+        try:
+            assert self.__data_core
+            d = self.__data_core.copy()
+
+            strike = strike if strike else np.round(self.__underlying_price)
+
+            times = []
+            sigmas = []
+
+
+            for t in d.keys():
+                matrix = d[t]['matrix']
+                indexes = d[t]['indexes']
+                for i in range(len(matrix)):
+                    if indexes[i][0] == 'c' and indexes[i][1] == strike:
+                        sigmas.append(matrix[i][5])
+                        times.append(float(matrix[i][11]) / 365.0)
+
+            # Matrices are n x m
+            #   where n : the nb of contract_dates
+            # compute underlyingPrice matrix
+            underlyingPrice = np.array([
+                np.arange(0.0, self.__underlying_price * 2, self.tickSize) for i in range(len(sigmas))
+            ])
+
+
+
+
+        except AssertionError:
+            pass
+        pass
+
+
+    #########################################################################################################
+    #                                   Client's Methods and Properties                                     #
+    #########################################################################################################
+
+
+    @property
+    def INDEX(self):
+        opt = self.opt
+        d ={'Expiry Dates':opt.expiry_dates}
+        return pd.DataFrame(data=d).transpose()
+
+    @property
+    def DATA(self):
+
+        print('Underlying @ {:.2f} \nLatest Option Quote @: {}\n'.format(self.__underlying_price, self.__last_quote))
+        print('Current Contracts Expires @ {}\n'.format(self.opt.expiry_dates[self.data_selection[0]]))
+        obj = self.__data_core[self.data_selection[0]]
+        data = np.array(obj['matrix'])
+        indexes = obj['indexes']
+        filtered_matrix = []
+        filtered_indexes = []
+
+        for i in range(len(data)):
+            if indexes[i][0] == self.data_selection[1]:
+                filtered_matrix.append(data[i])
+                filtered_indexes.append(indexes[i][1])
+
+        columns = [
+            'Ask',
+            'Bid',
+            'Last',
+            'Vol',
+            '%',
+            '\u03C3',
+            '\u0394',
+            '\u0393',
+            '\u039A',
+            '\u0398',
+            '\u03A1',
+            'Days to Expiry',
+            'Symbol'
+        ]
+        df = pd.DataFrame(data=filtered_matrix, index=filtered_indexes, columns=columns)
+        return df
+
+
     @property
     def VIEW_SELECTION(self):
         return 'CURRENTLY SELECTED DATA :: [ INDEX : {} | TYPE : {} | SYMBOL : {} ]'.format(
@@ -265,47 +353,6 @@ class OptionLib:
             self.data_selection = (INDEX, TYPE)
         except AssertionError:
             raise DataFormatError('Expiry index and option type ("c" or "p") must be valid')
-
-    @requireSyncFlag
-    def data_aggregate_IV(self):
-        """
-        Aggregate Contract's sigma by call and puts then store them in [ Time to Expiration, Strike, Volatility ]
-         format for later plotting
-        """
-        try:
-            assert self.__data_core
-            d = self.__data_core.copy()
-
-            for t in d.keys():
-                matrix = d[t]['matrix']
-                indexes = d[t]['indexes']
-                for i in range(len(matrix)):
-                    # Format : [ Time to Expiration, Strike, Volatility ]
-                    self.IVs[indexes[i][0]].append(
-                        [ matrix[i][11], indexes[i][1], matrix[i][5] ]
-                    )
-        except AssertionError:
-            raise DataFormatError('Must input a pandas.DataFrame')
-
-
-    def data_IVpT(self,
-                  expiry_index=0
-                  ):
-        """
-        Compute IV per timestamp
-        :return: calls and puts
-        """
-        dt = self.__data_core[expiry_index].copy()
-        matrix = dt['matrix']
-        indexes = dt['indexes']
-        calls, puts = [], []
-        # calls = [ [ Strike, IV] , ... ]
-        for i in range(len(matrix)):
-            if indexes[i][0] == 'c':
-                calls.append([indexes[i][1], matrix[i][5]])
-            else:
-                puts.append([indexes[i][1], matrix[i][5]])
-        return calls, puts
 
 
     #########################################################################################################
@@ -372,6 +419,10 @@ class OptionLib:
             print('You must specify option type as first argument and/or Invalid option type')
         except Exception as e:
             print(e)
+
+
+
+
 
 if __name__ == '__main__':
 
