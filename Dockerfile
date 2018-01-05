@@ -17,8 +17,7 @@ COPY ./core/ /core/
 
 RUN apt-get install curl wget
 
-RUN wget https://pypi.python.org/packages/32/38/a55150ec018cf6fe11012bf1d988cd737af7f82227e4ac753619f0fb27a4/lesscpy-0.12.0.tar.gz
-RUN pip install lesscpy-0.12.0.tar.gz
+
 RUN pip install jupyterthemes
 
 
