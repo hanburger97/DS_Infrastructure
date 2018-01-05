@@ -24,7 +24,6 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 from matplotlib import animation
-import math
 from threading import Thread, ThreadError
 
 from core.lib.Black_Scholes import Black_Scholes
@@ -59,13 +58,13 @@ def parallelProcess(func):
 
 def requireSyncFlag(func):
 
-    def wrapper(object):
+    def wrapper(object, *args):
         try:
             global SYNCFLAG
-            print('Data Building [ IN PROGRESS ] ')
+            #print('Data Building [ IN PROGRESS ] ')
             SYNCFLAG = 1
-            func(object)
-            print('Data Building [ COMPLETED ] ')
+            func(object, *args)
+            #print('Data Building [ COMPLETED ] ')
             SYNCFLAG = 0
         except Exception as e:
             print(e)
@@ -122,6 +121,9 @@ class OptionLib:
         self.data_init()
 
 
+
+
+
     #########################################################################################################
     #                                   Data Building and Housekeeping                                      #
     #########################################################################################################
@@ -131,8 +133,17 @@ class OptionLib:
         self.opt = Options(self.SYMBOL, self.data_provider)
         self.__underlying_price = self.opt.underlying_price
         self.data_building_core()
+        self.lastGreeks = {
+            'strike': None,
+            'data': {},
+            'S': [],
+            'T': []
+        }
         self.IVs = {'c': [], 'p': []}
+
         self.data_aggregate_IV()
+
+
 
 
     @waitSyncFlag
@@ -140,6 +151,12 @@ class OptionLib:
 
         self.__underlying_price = self.opt.underlying_price
         self.data_building_core()
+        self.lastGreeks = {
+            'strike': None,
+            'data': {},
+            'S': [],
+            'T': []
+        }
         self.IVs = {'c': [],'p': []}
         self.data_aggregate_IV()
 
@@ -158,7 +175,6 @@ class OptionLib:
                 print('Data Refreshing for {} [ COMPLETE ]'.format(self.SYMBOL))
 
 
-    # RLD-8
     @requireSyncFlag
     def data_building_core(self):
         try:
@@ -249,21 +265,17 @@ class OptionLib:
         return calls, puts
 
 
-    @requireSyncFlag
-    def data_aggregate_greeks(self,strike=None, sigma=0.1):
+    def data_aggregate_greeks(self,strike=None):
         """
 
         :return:
         """
         try:
             assert self.__data_core
+            assert strike
             d = self.__data_core.copy()
-
-            strike = strike if strike else np.round(self.__underlying_price)
-
             times = []
             sigmas = []
-
 
             for t in d.keys():
                 matrix = d[t]['matrix']
@@ -276,12 +288,83 @@ class OptionLib:
             # Matrices are n x m
             #   where n : the nb of contract_dates
             # compute underlyingPrice matrix
-            underlyingPrice = np.array([
-                np.arange(0.0, self.__underlying_price * 2, self.tickSize) for i in range(len(sigmas))
+
+            underlyingPriceMatrix = np.array([
+                np.arange(0.0,
+                          self.__underlying_price * 2,
+                          self.tickSize
+                          )
+                for i in range(len(sigmas))
             ])
 
+            MatrixShape = underlyingPriceMatrix.shape
+
+            sigmaMatrix = np.array([np.ones(MatrixShape[1]) * sigmas[i] for i in range(MatrixShape[0])]).reshape(MatrixShape)
+
+            expiryMatrix = np.array([np.ones(MatrixShape[1]) * times[i] for i in range(MatrixShape[0])]).reshape(MatrixShape)
+
+            ccontracts = []
+            pcontracts = []
+
+            for i in range(MatrixShape[0]):
+
+                for j in range(MatrixShape[1]):
+                    cbso = Black_Scholes(
+                        option_type='c',
+                        strike=strike,
+                        price=underlyingPriceMatrix[i][j],
+                        interest_rate=self.risk_free_rate,
+                        dividend_yield=self.dividend_rate,
+                        expiry=expiryMatrix[i][j],
+                        volatility=sigmaMatrix[i][j]
+                    )
+
+                    pbso = Black_Scholes(
+                        option_type='p',
+                        strike=strike,
+                        price=underlyingPriceMatrix[i][j],
+                        interest_rate=self.risk_free_rate,
+                        dividend_yield=self.dividend_rate,
+                        expiry=expiryMatrix[i][j],
+                        volatility=sigmaMatrix[i][j]
+                    )
+                    #Access elements in matrix[i][j]
+                    ccontracts.append(cbso)
+                    pcontracts.append(pbso)
 
 
+            cdelta = np.array([c.delta for c in ccontracts]).reshape(MatrixShape)
+            cgamma = np.array([c.gamma for c in ccontracts]).reshape(MatrixShape)
+            ctheta = np.array([c.theta for c in ccontracts]).reshape(MatrixShape)
+            ckappa = np.array([c.kappa for c in ccontracts]).reshape(MatrixShape)
+            crho = np.array([c.rho for c in ccontracts]).reshape(MatrixShape)
+
+            pdelta = np.array([p.delta for p in pcontracts]).reshape(MatrixShape)
+            pgamma = np.array([p.gamma for p in pcontracts]).reshape(MatrixShape)
+            ptheta = np.array([p.theta for p in pcontracts]).reshape(MatrixShape)
+            pkappa = np.array([p.kappa for p in pcontracts]).reshape(MatrixShape)
+            prho = np.array([p.rho for p in pcontracts]).reshape(MatrixShape)
+
+            greeks = {
+                'c':{},
+                'p':{}
+            }
+            greeks['c']['delta'] = cdelta
+            greeks['c']['gamma'] = cgamma
+            greeks['c']['theta'] = ctheta
+            greeks['c']['kappa'] = ckappa
+            greeks['c']['rho'] = crho
+
+            greeks['p']['delta'] = pdelta
+            greeks['p']['gamma'] = pgamma
+            greeks['p']['theta'] = ptheta
+            greeks['p']['kappa'] = pkappa
+            greeks['p']['rho'] = prho
+
+            self.lastGreeks['data'] = greeks
+            self.lastGreeks['strike'] = strike
+            self.lastGreeks['S'] = underlyingPriceMatrix
+            self.lastGreeks['T'] = expiryMatrix
 
         except AssertionError:
             pass
@@ -420,13 +503,46 @@ class OptionLib:
         except Exception as e:
             print(e)
 
+    def PLOT_LETTER(self,
+                    LETTER=None,
+                    STRIKE=None,
+                    otype='c'
+                    ):
+        try:
+            assert LETTER in ['delta','gamma', 'theta','kappa','rho']
+            data ={}
+            S, T = [], []
+            strike = STRIKE if STRIKE else np.round(self.__underlying_price)
 
+            if self.lastGreeks['strike'] and self.lastGreeks['strike'] == strike:
+                data, S, T = self.lastGreeks['data'], self.lastGreeks['S'], self.lastGreeks['T']
+            else:
+                self.data_aggregate_greeks(strike=strike)
+                data, S, T = self.lastGreeks['data'], self.lastGreeks['S'], self.lastGreeks['T']
 
+            print('Plotting {} with Strike {} for {} - {}\n'.format(LETTER, strike, self.SYMBOL, otype))
 
+            Z = data[otype][LETTER]
+            fig = plt.figure(figsize=(20, 11))
+            ax = fig.add_subplot(111, projection='3d')
+            ax.view_init(40, 290)
+            ax.plot_wireframe(S, T, Z, rstride=1, cstride=1)
+            ax.plot_surface(S, T, Z, facecolors=cm.jet(Z), linewidth=0.001, rstride=1, cstride=1, alpha=0.75)
+            ax.set_zlim3d(0, Z.max())
+            ax.set_xlabel('Stock Price')
+            ax.set_ylabel('Time to Expiration')
+            ax.set_zlabel(LETTER)
+            m = cm.ScalarMappable(cmap=cm.jet)
+            m.set_array(Z)
+            cbarDelta = plt.colorbar(m)
 
+        except AssertionError:
+            raise DataFormatError('Invalid Letter')
+        except ValueError:
+            raise DataFormatError('Invalid Calculations for {} :: Something went wrong on our end :$'.format(LETTER))
 if __name__ == '__main__':
 
-
-
-
-    pass
+    OL = OptionLib()
+    OL.data_building_core()
+    OL.data_aggregate_greeks()
+    OL.PLOT_GREEKS()

@@ -196,6 +196,7 @@ class Black_Scholes:
         return self.s * np.sqrt(self.T) * dn1 * np.exp(-self.q * self.T)
 
     def rho(self):
+
         d2 = self.d2
         rho = 0.0
         if self.type == "c":
