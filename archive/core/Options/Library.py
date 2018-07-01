@@ -11,22 +11,17 @@ Nomenclature and Naming: Most Client's Methods are CAPITALIZED
 
 """
 
+from __future__ import print_function
 
-import pandas as pd
-import numpy as np
-from pandas_datareader.data import Options
-import pandas_datareader.data as web
-import datetime
-import scipy.stats as stats
-from scipy import interpolate
-from scipy.interpolate import Rbf
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib import cm
-from matplotlib import animation
 from threading import Thread, ThreadError
 
-from core.lib.Black_Scholes import Black_Scholes
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from matplotlib import cm
+from pandas_datareader.data import Options
+
+from core.Options import Black_Scholes
 
 ############################################   Some Global Var         #################################################
 
@@ -377,13 +372,13 @@ class OptionLib:
 
 
     @property
-    def INDEX(self):
+    def index(self):
         opt = self.opt
         d ={'Expiry Dates':opt.expiry_dates}
         return pd.DataFrame(data=d).transpose()
 
     @property
-    def DATA(self):
+    def data(self):
 
         print('Underlying @ {:.2f} \nLatest Option Quote @: {}\n'.format(self.__underlying_price, self.__last_quote))
         print('Current Contracts Expires @ {}\n'.format(self.opt.expiry_dates[self.data_selection[0]]))
@@ -423,7 +418,7 @@ class OptionLib:
             self.data_selection[0], self.data_selection[1], self.SYMBOL
         )
 
-    def SELECT(self,
+    def select(self,
                INDEX=0,
                TYPE='c',
                ):
@@ -442,7 +437,7 @@ class OptionLib:
     #                                       Plotting                                                        #
     #########################################################################################################
 
-    def PLOT_SMILE(self,
+    def plot_smile(self,
                    expiry_index=None,
                    ):
         """
@@ -468,7 +463,8 @@ class OptionLib:
         plt.ylabel('Implied Volatility')
         plt.legend((e, f), ("IV (call options)", "IV (put options)"))
 
-    def PLOT_SURFACE(self,
+
+    def plot_surface(self,
                      option_type=None,
                      ):
         try:
@@ -503,7 +499,7 @@ class OptionLib:
         except Exception as e:
             print(e)
 
-    def PLOT_LETTER(self,
+    def plot_letter(self,
                     LETTER=None,
                     STRIKE=None,
                     otype='c'
@@ -545,4 +541,4 @@ if __name__ == '__main__':
     OL = OptionLib()
     OL.data_building_core()
     OL.data_aggregate_greeks()
-    OL.PLOT_GREEKS()
+    OL.PLOT_LETTER('theta')

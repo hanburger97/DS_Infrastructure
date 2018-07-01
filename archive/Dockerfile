@@ -21,6 +21,8 @@ RUN apt-get install curl wget
 RUN pip install jupyterthemes
 
 
+
 EXPOSE 8888
 
-CMD jupyter notebook --no-browser --ip=0.0.0.0 --allow-root --notebook-dir=/researchs
+
+CMD jupyter notebook --no-browser --ip=0.0.0.0 --allow-root --notebook-dir=/researchs && jupyter nbextension enable --py --sys-prefix widgetsnbextension

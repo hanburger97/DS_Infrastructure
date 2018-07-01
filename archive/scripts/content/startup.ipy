@@ -18,10 +18,20 @@ import pandas_datareader.data as web
 import datetime
 
 
-from core.lib.Options import OptionLib
+#% jupyter nbextension enable --py --sys-prefix widgetsnbextension
+
+
+
+from core.Options.Library import OptionLib
+from core.Options.Position import OptionsPosition
 
 # Show graphs inline
 %pylab inline
+
+#%matplotlib notebook
+
+
+
 
 # import jtplot submodule from jupyterthemes
 from jupyterthemes import jtplot
@@ -30,12 +40,12 @@ from jupyterthemes import jtplot
 # set plot style if no arguments provided
 jtplot.style(theme='monokai')
 
-
+#%matplotlib inline
 # Initialize olib
 
-OL = OptionLib()
-
+optlib= OptionLib()
+optpos = OptionsPosition()
 
 
 # Starting the auto refresh feature
-OL.data_auto_refresh()
+optlib.data_auto_refresh()

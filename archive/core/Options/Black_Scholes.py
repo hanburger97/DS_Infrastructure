@@ -176,19 +176,20 @@ class Black_Scholes:
         d1 = self.d1
         d2 = self.d2
         dn1 = self.dn(d1)
+        try:
+            if self.type == "c":
+                theta = -self.s * dn1 * self.sigma * np.exp(-self.q * self.T) / (2 * np.sqrt(self.T)) \
+                        + self.q * self.s * self.n(d1) * np.exp(-self.q * self.T) \
+                        - self.r * self.k * np.exp(-self.r * self.T) * self.n(d2)
 
-        if self.type == "c":
-            theta = -self.s * dn1 * self.sigma * np.exp(-self.q * self.T) / (2 * np.sqrt(self.T)) \
-                    + self.q * self.s * self.n(d1) * np.exp(-self.q * self.T) \
-                    - self.r * self.k * np.exp(-self.r * self.T) * self.n(d2)
-
-
-            return theta
-        elif self.type == "p":
-            theta = -self.s * dn1 * self.sigma * np.exp(-self.q * self.T) / (2 * np.sqrt(self.T)) \
-                    - self.q * self.s * self.n(-d1) * np.exp(-self.q * self.T) \
-                    + self.r * self.k * np.exp(-self.r * self.T) * self.n(-d2)
-            return theta
+                return theta
+            elif self.type == "p":
+                theta = -self.s * dn1 * self.sigma * np.exp(-self.q * self.T) / (2 * np.sqrt(self.T)) \
+                        - self.q * self.s * self.n(-d1) * np.exp(-self.q * self.T) \
+                        + self.r * self.k * np.exp(-self.r * self.T) * self.n(-d2)
+                return theta
+        except RuntimeWarning as rw:
+            print(rw)
 
     def kappa(self):
         d1 = self.d1

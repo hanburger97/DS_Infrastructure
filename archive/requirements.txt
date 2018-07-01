@@ -5,3 +5,4 @@ matplotlib
 pandas_datareader
 jupyter
 quandl
+ipywidgets
